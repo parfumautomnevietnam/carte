@@ -55,6 +55,7 @@ export const cities = [
   { id: 'mui-ne', name: 'Mui Ne', lat: 10.93, lng: 108.3, country: 'VN' },
   { id: 'hcmv', name: 'Ho Chi Minh Ville', lat: 10.82, lng: 106.63, country: 'VN' },
   { id: 'vung-tau', name: 'Vung Tau', lat: 10.35, lng: 107.08, country: 'VN' },
+  { id: 'ho-tram', name: 'Ho Tram', lat: 10.527290041073279, lng: 107.40944244550448, country: 'VN' },
   { id: 'ben-tre', name: 'Ben Tre', lat: 10.24, lng: 106.37, country: 'VN' },
   { id: 'can-tho', name: 'Can Tho', lat: 10.04, lng: 105.79, country: 'VN' },
   { id: 'tra-vinh', name: 'Tra Vinh', lat: 9.93, lng: 106.35, country: 'VN' },
