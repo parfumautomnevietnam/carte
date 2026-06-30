@@ -137,14 +137,7 @@ export default function MapView({ itinerary }) {
           {/* Marqueurs — uniquement les villes sélectionnées */}
           {cities.map(city => {
             const isSelected = itineraryIds.has(city.id)
-            if (!isSelected) {
-              // Point simple sans label
-              return (
-                <Marker key={city.id} coordinates={[city.lng, city.lat]}>
-                  {/* rien — points supprimés */}
-                </Marker>
-              )
-            }
+            if (!isSelected) return null
 
             const stepIdx = itinerary.findIndex(c => c.id === city.id)
             const labelSide = stepIdx % 2 === 0 ? 1 : -1
