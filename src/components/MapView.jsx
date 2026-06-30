@@ -4,15 +4,22 @@ import { select } from 'd3-selection'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import { cities } from '../cities.js'
 
-const GEO_URL = '/countries-110m.json'
+const GEO_WORLD = '/countries-110m.json'
+const GEO_PROVINCES = '/provinces-vn-la-kh.geojson'
 
 const COUNTRY_COLORS = {
-  '704': { fill: '#e8e0c5', stroke: '#a89870' },
-  '418': { fill: '#d8d4c8', stroke: '#a8a490' },
-  '116': { fill: '#d4cfc0', stroke: '#a8a490' },
-  '764': { fill: '#d0ccc0', stroke: '#b0ac9e' },
-  '156': { fill: '#cccac0', stroke: '#aca8a0' },
-  '104': { fill: '#d0ccc0', stroke: '#b0ac9e' },
+  '704': { fill: '#eee8cc', stroke: '#b0a870' },  // Vietnam — crème
+  '418': { fill: '#d8d4c8', stroke: '#a8a490' },  // Laos
+  '116': { fill: '#d4cfc0', stroke: '#a8a490' },  // Cambodge
+  '764': { fill: '#d0ccc0', stroke: '#b0ac9e' },  // Thaïlande
+  '156': { fill: '#cccac0', stroke: '#aca8a0' },  // Chine
+  '104': { fill: '#d0ccc0', stroke: '#b0ac9e' },  // Myanmar
+}
+
+const PROVINCE_COLORS = {
+  VN: { fill: '#eee8cc', stroke: '#b0a870', strokeWidth: 0.3 },
+  LA: { fill: '#d8d4c8', stroke: '#a8a490', strokeWidth: 0.25 },
+  KH: { fill: '#d4cfc0', stroke: '#a8a490', strokeWidth: 0.25 },
 }
 
 function catmullRomPath(pts) {
@@ -124,7 +131,8 @@ export default function MapView({ itinerary }) {
       >
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           <rect x="-9999" y="-9999" width="19998" height="19998" fill="#b8d0de" />
-          <Geographies geography={GEO_URL}>
+          {/* Fond : pays voisins (110m) */}
+          <Geographies geography={GEO_WORLD}>
             {(args) => {
               handleGeos(args)
               return args.geographies.map(geo => {
@@ -141,6 +149,26 @@ export default function MapView({ itinerary }) {
                 )
               })
             }}
+          </Geographies>
+
+          {/* Provinces VN / Laos / Cambodge par-dessus */}
+          <Geographies geography={GEO_PROVINCES}>
+            {({ geographies }) =>
+              geographies.map(geo => {
+                const iso = geo.properties?.iso_a2
+                const style = PROVINCE_COLORS[iso] ?? { fill: '#ccc8bc', stroke: '#aaa898', strokeWidth: 0.3 }
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={style.fill}
+                    stroke={style.stroke}
+                    strokeWidth={style.strokeWidth}
+                    style={{ default: { outline: 'none' }, hover: { outline: 'none' }, pressed: { outline: 'none' } }}
+                  />
+                )
+              })
+            }
           </Geographies>
         </g>
       </ComposableMap>
