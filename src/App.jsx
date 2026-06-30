@@ -9,13 +9,7 @@ export default function App() {
   const [itinerary, setItinerary] = useState([])
   const [query, setQuery] = useState('')
   const [exporting, setExporting] = useState(false)
-  const [mapZoom, setMapZoom] = useState(1)
   const mapRef = useRef(null)
-  const projectionRef = useRef(null)
-
-  const zoomIn  = () => setMapZoom(z => Math.min(14, +(z * 1.4).toFixed(3)))
-  const zoomOut = () => setMapZoom(z => Math.max(0.8, +(z / 1.4).toFixed(3)))
-  const zoomReset = () => setMapZoom(1)
 
   const filtered = query.trim().length > 0
     ? cities.filter(c =>
@@ -150,12 +144,7 @@ export default function App() {
 
       {/* ── Map ── */}
       <div className="map-container" ref={mapRef}>
-        <MapView itinerary={itinerary} zoom={mapZoom} onZoomChange={setMapZoom} />
-        <div className="zoom-controls">
-          <button className="zoom-btn" onClick={zoomIn} title="Zoom +">+</button>
-          <button className="zoom-btn" onClick={zoomOut} title="Zoom −">−</button>
-          <button className="zoom-btn zoom-reset" onClick={zoomReset} title="Vue globale">↺</button>
-        </div>
+        <MapView itinerary={itinerary} />
         <div className="map-hint">molette = zoom · cliquer-glisser = déplacer</div>
       </div>
     </div>

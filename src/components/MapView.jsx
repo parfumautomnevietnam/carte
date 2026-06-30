@@ -34,23 +34,17 @@ function catmullRomPath(pts) {
 const INIT_CENTER = [106.5, 16]
 const INIT_ZOOM = 1
 
-export default function MapView({ itinerary, zoom: zoomProp, onZoomChange }) {
+export default function MapView({ itinerary }) {
   const [position, setPosition] = useState({ center: INIT_CENTER, zoom: INIT_ZOOM })
   const projRef = useRef(null)
   const [projectedCities, setProjectedCities] = useState({})
 
-  // Sync zoom depuis le parent (boutons +/-)
-  const effectiveZoom = zoomProp ?? position.zoom
+  const handleMove = ({ zoom }) => setPosition(prev => ({ ...prev, zoom }))
+  const handleMoveEnd = (pos) => setPosition(pos)
 
-  const handleMove = ({ zoom }) => {
-    setPosition(prev => ({ ...prev, zoom }))
-    if (onZoomChange) onZoomChange(zoom)
-  }
-
-  const handleMoveEnd = (pos) => {
-    setPosition(pos)
-    if (onZoomChange) onZoomChange(pos.zoom)
-  }
+  const zoomIn  = () => setPosition(p => ({ ...p, zoom: Math.min(14, +(p.zoom * 1.5).toFixed(3)) }))
+  const zoomOut = () => setPosition(p => ({ ...p, zoom: Math.max(0.8, +(p.zoom / 1.5).toFixed(3)) }))
+  const zoomReset = () => setPosition({ center: INIT_CENTER, zoom: INIT_ZOOM })
 
   // Recompute projected coords when projection is available
   const handleGeos = ({ projection }) => {
@@ -73,7 +67,7 @@ export default function MapView({ itinerary, zoom: zoomProp, onZoomChange }) {
   })
 
   // Taille des éléments inversement proportionnelle au zoom pour rester constants
-  const z = effectiveZoom
+  const z = position.zoom
   const dotR = 4 / z
   const dotRSelected = 6 / z
   const fontSize = 8 / z
@@ -81,6 +75,7 @@ export default function MapView({ itinerary, zoom: zoomProp, onZoomChange }) {
   const routeW = 2 / z
 
   return (
+    <>
     <ComposableMap
       projection="geoMercator"
       projectionConfig={{ center: INIT_CENTER, scale: 1600 }}
@@ -88,7 +83,7 @@ export default function MapView({ itinerary, zoom: zoomProp, onZoomChange }) {
     >
       <ZoomableGroup
         center={position.center}
-        zoom={effectiveZoom}
+        zoom={position.zoom}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         minZoom={0.8}
@@ -181,5 +176,13 @@ export default function MapView({ itinerary, zoom: zoomProp, onZoomChange }) {
         })}
       </ZoomableGroup>
     </ComposableMap>
+
+    {/* Boutons zoom — en dehors du SVG, positionnés en absolu */}
+    <div className="zoom-controls">
+      <button className="zoom-btn" onClick={zoomIn} title="Zoom +">+</button>
+      <button className="zoom-btn" onClick={zoomOut} title="Zoom −">−</button>
+      <button className="zoom-btn zoom-reset" onClick={zoomReset} title="Vue globale">↺</button>
+    </div>
+    </>
   )
 }
