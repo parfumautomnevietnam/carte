@@ -1,5 +1,7 @@
-import { useRef, useState } from 'react'
-import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps'
+import { useRef, useState, useEffect, useCallback } from 'react'
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps'
+import { select } from 'd3-selection'
+import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import { cities } from '../cities.js'
 
 const GEO_URL = '/countries-110m.json'
@@ -13,8 +15,7 @@ const COUNTRY_COLORS = {
   '104': { fill: '#d0ccc0', stroke: '#b0ac9e' },
 }
 
-const INIT_CENTER = [106.5, 16]
-const INIT_ZOOM = 1
+const PROJ_CONFIG = { center: [106.5, 16], scale: 1600 }
 
 function catmullRomPath(pts) {
   if (pts.length < 2) return ''
@@ -34,36 +35,34 @@ function catmullRomPath(pts) {
   return d
 }
 
-// Déclenche un zoom D3 natif au centre du SVG
-function triggerWheelZoom(svgEl, direction) {
-  if (!svgEl) return
-  const rect = svgEl.getBoundingClientRect()
-  const cx = rect.left + rect.width / 2
-  const cy = rect.top + rect.height / 2
-  svgEl.dispatchEvent(new WheelEvent('wheel', {
-    bubbles: true,
-    cancelable: true,
-    clientX: cx,
-    clientY: cy,
-    deltaY: direction > 0 ? -300 : 300,
-    deltaMode: 0,
-  }))
-}
-
 export default function MapView({ itinerary }) {
-  const [position, setPosition] = useState({ center: INIT_CENTER, zoom: INIT_ZOOM })
-  const [projectedCities, setProjectedCities] = useState({})
-  const projRef = useRef(null)
   const svgRef = useRef(null)
+  const zoomBehaviorRef = useRef(null)
+  const projRef = useRef(null)
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 })
+  const [projectedCities, setProjectedCities] = useState({})
 
-  const handleMove = ({ zoom }) => setPosition(prev => ({ ...prev, zoom }))
-  const handleMoveEnd = (pos) => setPosition(pos)
+  // Initialise D3 zoom sur le SVG
+  useEffect(() => {
+    if (!svgRef.current) return
+    const svg = select(svgRef.current)
+    const behavior = d3Zoom()
+      .scaleExtent([0.5, 14])
+      .on('zoom', (event) => {
+        const { x, y, k } = event.transform
+        setTransform({ x, y, k })
+      })
+    svg.call(behavior)
+    zoomBehaviorRef.current = behavior
+    return () => svg.on('.zoom', null)
+  }, [])
 
-  const zoomIn    = () => triggerWheelZoom(svgRef.current, 1)
-  const zoomOut   = () => triggerWheelZoom(svgRef.current, -1)
-  const zoomReset = () => setPosition({ center: INIT_CENTER, zoom: INIT_ZOOM })
+  const zoomIn    = () => select(svgRef.current).transition().duration(250).call(zoomBehaviorRef.current.scaleBy, 1.5)
+  const zoomOut   = () => select(svgRef.current).transition().duration(250).call(zoomBehaviorRef.current.scaleBy, 1 / 1.5)
+  const zoomReset = () => select(svgRef.current).transition().duration(300).call(zoomBehaviorRef.current.transform, zoomIdentity)
 
-  const handleGeos = ({ projection }) => {
+  // Récupère la projection depuis react-simple-maps
+  const handleGeos = useCallback(({ projection }) => {
     if (projection && !projRef.current) {
       projRef.current = projection
       const coords = {}
@@ -73,40 +72,52 @@ export default function MapView({ itinerary }) {
       })
       setProjectedCities(coords)
     }
-  }
+  }, [])
 
   const itineraryIds = new Set(itinerary.map(c => c.id))
-  const routePoints = itinerary.map(c => projectedCities[c.id]).filter(Boolean)
   const firstStepByCity = {}
   itinerary.forEach((c, idx) => {
     if (!(c.id in firstStepByCity)) firstStepByCity[c.id] = idx + 1
   })
 
-  const z = position.zoom
-  const dotRSelected = 5 / z
-  const dotR = 2.5 / z
-  const fontSize = 8 / z
-  const strokeW = 1.5 / z
-  const routeW = 2 / z
+  // Coordonnées projetées des villes de l'itinéraire → applique le zoom
+  const selectedCities = itinerary
+    .filter((c, idx, arr) => arr.findIndex(x => x.id === c.id) === idx) // déduplique pour les marqueurs
+    .map(c => {
+      const base = projectedCities[c.id]
+      if (!base) return null
+      return {
+        ...c,
+        sx: transform.x + base[0] * transform.k,
+        sy: transform.y + base[1] * transform.k,
+      }
+    })
+    .filter(Boolean)
+
+  // Points de route dans l'espace écran
+  const routeScreenPoints = itinerary
+    .map(c => {
+      const base = projectedCities[c.id]
+      if (!base) return null
+      return [transform.x + base[0] * transform.k, transform.y + base[1] * transform.k]
+    })
+    .filter(Boolean)
+
+  const DOT_R = 6
+  const FONT_SIZE = 12
 
   return (
-    <>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#b8d0de', cursor: 'grab' }}>
+
+      {/* Carte géographique — zoomée via transform D3 */}
       <ComposableMap
         ref={svgRef}
         projection="geoMercator"
-        projectionConfig={{ center: INIT_CENTER, scale: 1600 }}
-        style={{ width: '100%', height: '100%', background: '#b8d0de' }}
+        projectionConfig={PROJ_CONFIG}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
       >
-        <ZoomableGroup
-          center={position.center}
-          zoom={position.zoom}
-          onMove={handleMove}
-          onMoveEnd={handleMoveEnd}
-          minZoom={0.8}
-          maxZoom={14}
-        >
+        <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           <rect x="-9999" y="-9999" width="19998" height="19998" fill="#b8d0de" />
-
           <Geographies geography={GEO_URL}>
             {(args) => {
               handleGeos(args)
@@ -118,73 +129,68 @@ export default function MapView({ itinerary }) {
                     geography={geo}
                     fill={style.fill}
                     stroke={style.stroke}
-                    strokeWidth={0.4 / z}
+                    strokeWidth={0.4}
                     style={{ default: { outline: 'none' }, hover: { outline: 'none' }, pressed: { outline: 'none' } }}
                   />
                 )
               })
             }}
           </Geographies>
-
-          {/* Route */}
-          {routePoints.length >= 2 && (
-            <g>
-              <path d={catmullRomPath(routePoints)} fill="none" stroke="#c9603a" strokeWidth={routeW * 4} strokeOpacity={0.15} strokeLinecap="round" />
-              <path d={catmullRomPath(routePoints)} fill="none" stroke="#c9603a" strokeWidth={routeW} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={`${6 / z} ${4 / z}`} />
-            </g>
-          )}
-
-          {/* Marqueurs — uniquement les villes sélectionnées */}
-          {cities.map(city => {
-            const isSelected = itineraryIds.has(city.id)
-            if (!isSelected) return null
-
-            const stepIdx = itinerary.findIndex(c => c.id === city.id)
-            const labelSide = stepIdx % 2 === 0 ? 1 : -1
-            const offset = dotRSelected + 10 / z
-
-            return (
-              <Marker key={city.id} coordinates={[city.lng, city.lat]}>
-                <circle
-                  r={dotRSelected}
-                  fill="#c9603a"
-                  stroke="#8a3020"
-                  strokeWidth={strokeW}
-                />
-                <line
-                  x1={0} y1={0}
-                  x2={labelSide * offset * 0.6} y2={-offset * 0.6}
-                  stroke="#c9603a" strokeWidth={0.8 / z} strokeOpacity={0.5}
-                />
-                <text
-                  textAnchor="middle"
-                  x={labelSide * offset * 0.6}
-                  y={-offset * 0.6 - 4 / z}
-                  stroke="#e8e0c5" strokeWidth={2 / z} strokeLinejoin="round" paintOrder="stroke"
-                  style={{ fontSize: `${fontSize * 0.85}px`, fill: '#8a3020', fontFamily: 'Inter', fontWeight: 700, pointerEvents: 'none' }}
-                >
-                  {firstStepByCity[city.id]}
-                </text>
-                <text
-                  textAnchor={labelSide > 0 ? 'start' : 'end'}
-                  x={labelSide * offset * 0.6}
-                  y={-offset * 0.6 + fontSize * 0.4}
-                  stroke="#e8e0c5" strokeWidth={2.5 / z} strokeLinejoin="round" paintOrder="stroke"
-                  style={{ fontSize: `${fontSize}px`, fill: '#3a2010', fontFamily: 'Inter', fontWeight: 600, pointerEvents: 'none' }}
-                >
-                  {city.name}
-                </text>
-              </Marker>
-            )
-          })}
-        </ZoomableGroup>
+        </g>
       </ComposableMap>
 
+      {/* Overlay SVG pour route + marqueurs — PAS de zoom appliqué, positions en coords écran */}
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+
+        {/* Route */}
+        {routeScreenPoints.length >= 2 && (
+          <>
+            <path d={catmullRomPath(routeScreenPoints)} fill="none" stroke="#c9603a" strokeWidth={8} strokeOpacity={0.15} strokeLinecap="round" />
+            <path d={catmullRomPath(routeScreenPoints)} fill="none" stroke="#c9603a" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="8 5" />
+          </>
+        )}
+
+        {/* Marqueurs des villes sélectionnées */}
+        {selectedCities.map(city => {
+          const stepIdx = itinerary.findIndex(c => c.id === city.id)
+          const labelSide = stepIdx % 2 === 0 ? 1 : -1
+          const offset = DOT_R + 14
+
+          return (
+            <g key={city.id} transform={`translate(${city.sx},${city.sy})`}>
+              <circle r={DOT_R} fill="#c9603a" stroke="#8a3020" strokeWidth={1.5} />
+              <line x1={0} y1={0} x2={labelSide * offset * 0.65} y2={-offset * 0.65} stroke="#c9603a" strokeWidth={1} strokeOpacity={0.5} />
+              <text
+                textAnchor="middle"
+                x={labelSide * offset * 0.65}
+                y={-offset * 0.65 - 5}
+                stroke="#e8e0c5" strokeWidth={2.5} strokeLinejoin="round" paintOrder="stroke"
+                style={{ fontSize: `${FONT_SIZE * 0.8}px`, fill: '#8a3020', fontFamily: 'Inter', fontWeight: 700 }}
+              >
+                {firstStepByCity[city.id]}
+              </text>
+              <text
+                textAnchor={labelSide > 0 ? 'start' : 'end'}
+                x={labelSide * offset * 0.65}
+                y={-offset * 0.65 + FONT_SIZE * 0.45}
+                stroke="#e8e0c5" strokeWidth={2.5} strokeLinejoin="round" paintOrder="stroke"
+                style={{ fontSize: `${FONT_SIZE}px`, fill: '#3a2010', fontFamily: 'Inter', fontWeight: 600 }}
+              >
+                {city.name}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+
+      {/* Boutons zoom */}
       <div className="zoom-controls">
-        <button className="zoom-btn" onClick={zoomIn} title="Zoom +">+</button>
-        <button className="zoom-btn" onClick={zoomOut} title="Zoom −">−</button>
-        <button className="zoom-btn zoom-reset" onClick={zoomReset} title="Vue globale">↺</button>
+        <button className="zoom-btn" onClick={zoomIn}>+</button>
+        <button className="zoom-btn" onClick={zoomOut}>−</button>
+        <button className="zoom-btn zoom-reset" onClick={zoomReset}>↺</button>
       </div>
-    </>
+
+      <div className="map-hint">molette = zoom · cliquer-glisser = déplacer</div>
+    </div>
   )
 }
