@@ -290,6 +290,37 @@ html, body, #root {
 
 .zoom-reset { font-size: 14px; margin-top: 4px; }
 
+/* ── Transport selector ── */
+.transport-selector {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+
+.transport-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1.4;
+}
+
+.transport-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: var(--text-muted);
+}
+
+.transport-btn.active {
+  background: rgba(201,96,58,0.2);
+  border-color: var(--route);
+  color: var(--text);
+}
+
 .map-hint {
   position: absolute;
   bottom: 14px;

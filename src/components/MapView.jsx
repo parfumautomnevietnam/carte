@@ -8,18 +8,46 @@ const GEO_WORLD = '/countries-110m.json'
 const GEO_PROVINCES = '/provinces-vn-la-kh.geojson'
 
 const COUNTRY_COLORS = {
-  '704': { fill: '#eee8cc', stroke: '#b0a870' },  // Vietnam — crème
-  '418': { fill: '#d8d4c8', stroke: '#a8a490' },  // Laos
-  '116': { fill: '#d4cfc0', stroke: '#a8a490' },  // Cambodge
-  '764': { fill: '#d0ccc0', stroke: '#b0ac9e' },  // Thaïlande
-  '156': { fill: '#cccac0', stroke: '#aca8a0' },  // Chine
-  '104': { fill: '#d0ccc0', stroke: '#b0ac9e' },  // Myanmar
+  '704': { fill: '#eee8cc', stroke: '#b0a870' },
+  '418': { fill: '#d8d4c8', stroke: '#a8a490' },
+  '116': { fill: '#d4cfc0', stroke: '#a8a490' },
+  '764': { fill: '#d0ccc0', stroke: '#b0ac9e' },
+  '156': { fill: '#cccac0', stroke: '#aca8a0' },
+  '104': { fill: '#d0ccc0', stroke: '#b0ac9e' },
 }
 
 const PROVINCE_COLORS = {
   VN: { fill: '#eee8cc', stroke: '#b0a870', strokeWidth: 0.3 },
   LA: { fill: '#d8d4c8', stroke: '#a8a490', strokeWidth: 0.25 },
   KH: { fill: '#d4cfc0', stroke: '#a8a490', strokeWidth: 0.25 },
+}
+
+// Quadratic bezier with curve perpendicular offset
+function quadBezierPath(p1, p2, curvature = 0.25) {
+  const mx = (p1[0] + p2[0]) / 2
+  const my = (p1[1] + p2[1]) / 2
+  const dx = p2[0] - p1[0]
+  const dy = p2[1] - p1[1]
+  const len = Math.sqrt(dx * dx + dy * dy)
+  const cx = mx - dy / len * len * curvature
+  const cy = my + dx / len * len * curvature
+  return { path: `M ${p1[0]},${p1[1]} Q ${cx},${cy} ${p2[0]},${p2[1]}`, cx, cy }
+}
+
+// Midpoint on quadratic bezier at t=0.5
+function quadMid(p1, p2, curvature = 0.25) {
+  const mx = (p1[0] + p2[0]) / 2
+  const my = (p1[1] + p2[1]) / 2
+  const dx = p2[0] - p1[0]
+  const dy = p2[1] - p1[1]
+  const len = Math.sqrt(dx * dx + dy * dy)
+  const cx = mx - dy / len * len * curvature
+  const cy = my + dx / len * len * curvature
+  // t=0.5 on quadratic: 0.25*p1 + 0.5*ctrl + 0.25*p2
+  return [
+    0.25 * p1[0] + 0.5 * cx + 0.25 * p2[0],
+    0.25 * p1[1] + 0.5 * cy + 0.25 * p2[1],
+  ]
 }
 
 function catmullRomPath(pts) {
@@ -42,6 +70,47 @@ function catmullRomPath(pts) {
 
 const DOT_R = 6
 const FONT_SIZE = 12
+const ROUTE_COLOR = '#c9603a'
+
+function Segment({ p1, p2, transport }) {
+  if (transport === 'plane') {
+    const curvature = 0.35
+    const { path } = quadBezierPath(p1, p2, curvature)
+    const mid = quadMid(p1, p2, curvature)
+    return (
+      <g>
+        <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={8} strokeOpacity={0.12} strokeLinecap="round" />
+        <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="10 7" />
+        <text
+          x={mid[0]} y={mid[1]}
+          textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: '18px', userSelect: 'none' }}
+          stroke="#e8e0c5" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+        >✈</text>
+      </g>
+    )
+  }
+
+  if (transport === 'train') {
+    const { path } = quadBezierPath(p1, p2, 0.15)
+    return (
+      <g>
+        <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={8} strokeOpacity={0.12} strokeLinecap="round" />
+        <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={3} strokeLinecap="round" strokeDasharray="1 6" />
+        <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={2} strokeLinecap="round" />
+      </g>
+    )
+  }
+
+  // car: simple gentle curve
+  const { path } = quadBezierPath(p1, p2, 0.12)
+  return (
+    <g>
+      <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={8} strokeOpacity={0.12} strokeLinecap="round" />
+      <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={2.5} strokeLinecap="round" />
+    </g>
+  )
+}
 
 export default function MapView({ itinerary }) {
   const containerRef = useRef(null)
@@ -53,21 +122,19 @@ export default function MapView({ itinerary }) {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 })
   const [projectedCities, setProjectedCities] = useState({})
 
-  // Mesure les dimensions réelles du conteneur
   useEffect(() => {
     if (!containerRef.current) return
     const ro = new ResizeObserver(entries => {
       for (const e of entries) {
         const { width, height } = e.contentRect
         setDims({ w: width, h: height })
-        projRef.current = null // force recalcul de la projection
+        projRef.current = null
       }
     })
     ro.observe(containerRef.current)
     return () => ro.disconnect()
   }, [])
 
-  // Init D3 zoom sur le SVG
   useEffect(() => {
     if (!svgRef.current) return
     const svg = select(svgRef.current)
@@ -86,7 +153,6 @@ export default function MapView({ itinerary }) {
   const zoomOut   = () => select(svgRef.current).transition().duration(250).call(zoomRef.current.scaleBy, 1 / 1.5)
   const zoomReset = () => select(svgRef.current).transition().duration(300).call(zoomRef.current.transform, zoomIdentity)
 
-  // Récupère la projection quand les Geographies chargent
   const handleGeos = useCallback(({ projection }) => {
     if (projection && !projRef.current) {
       projRef.current = projection
@@ -97,30 +163,34 @@ export default function MapView({ itinerary }) {
       })
       setProjectedCities(coords)
     }
-  }, [dims]) // recalcule quand dims changent
+  }, [dims])
 
-  const itineraryIds = new Set(itinerary.map(c => c.id))
   const firstStepByCity = {}
   itinerary.forEach((c, idx) => {
     if (!(c.id in firstStepByCity)) firstStepByCity[c.id] = idx + 1
   })
 
-  // Ville unique par id pour les marqueurs
   const uniqueSelected = itinerary.filter((c, idx, arr) => arr.findIndex(x => x.id === c.id) === idx)
 
-  // Coordonnées écran = coords projection + transform zoom
   const toScreen = (cityId) => {
     const base = projectedCities[cityId]
     if (!base) return null
     return [transform.x + base[0] * transform.k, transform.y + base[1] * transform.k]
   }
 
-  const routeScreenPoints = itinerary.map(c => toScreen(c.id)).filter(Boolean)
+  // Build segments: each consecutive pair with its transport type
+  const segments = []
+  for (let i = 1; i < itinerary.length; i++) {
+    const p1 = toScreen(itinerary[i - 1].id)
+    const p2 = toScreen(itinerary[i].id)
+    if (p1 && p2) {
+      segments.push({ p1, p2, transport: itinerary[i].transport || 'car', key: `${itinerary[i-1].uid}-${itinerary[i].uid}` })
+    }
+  }
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#b8d0de', cursor: 'grab' }}>
 
-      {/* SVG carte — dimensions réelles, pas de viewBox qui décale */}
       <ComposableMap
         ref={svgRef}
         projection="geoMercator"
@@ -131,7 +201,6 @@ export default function MapView({ itinerary }) {
       >
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           <rect x="-9999" y="-9999" width="19998" height="19998" fill="#b8d0de" />
-          {/* Fond : pays voisins (110m) */}
           <Geographies geography={GEO_WORLD}>
             {(args) => {
               handleGeos(args)
@@ -151,7 +220,6 @@ export default function MapView({ itinerary }) {
             }}
           </Geographies>
 
-          {/* Provinces VN / Laos / Cambodge par-dessus */}
           <Geographies geography={GEO_PROVINCES}>
             {({ geographies }) =>
               geographies.map(geo => {
@@ -173,15 +241,11 @@ export default function MapView({ itinerary }) {
         </g>
       </ComposableMap>
 
-      {/* Overlay : route + marqueurs en coords écran, taille fixe */}
       <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
 
-        {routeScreenPoints.length >= 2 && (
-          <>
-            <path d={catmullRomPath(routeScreenPoints)} fill="none" stroke="#c9603a" strokeWidth={8} strokeOpacity={0.15} strokeLinecap="round" />
-            <path d={catmullRomPath(routeScreenPoints)} fill="none" stroke="#c9603a" strokeWidth={2} strokeLinecap="round" strokeDasharray="8 5" />
-          </>
-        )}
+        {segments.map(seg => (
+          <Segment key={seg.key} p1={seg.p1} p2={seg.p2} transport={seg.transport} />
+        ))}
 
         {uniqueSelected.map(city => {
           const sc = toScreen(city.id)
@@ -192,8 +256,8 @@ export default function MapView({ itinerary }) {
 
           return (
             <g key={city.id} transform={`translate(${sc[0]},${sc[1]})`}>
-              <circle r={DOT_R} fill="#c9603a" stroke="#8a3020" strokeWidth={1.5} />
-              <line x1={0} y1={0} x2={side * off * 0.65} y2={-off * 0.65} stroke="#c9603a" strokeWidth={1} strokeOpacity={0.5} />
+              <circle r={DOT_R} fill={ROUTE_COLOR} stroke="#8a3020" strokeWidth={1.5} />
+              <line x1={0} y1={0} x2={side * off * 0.65} y2={-off * 0.65} stroke={ROUTE_COLOR} strokeWidth={1} strokeOpacity={0.5} />
               <text
                 textAnchor="middle"
                 x={side * off * 0.65} y={-off * 0.65 - 5}
@@ -220,7 +284,6 @@ export default function MapView({ itinerary }) {
         <button className="zoom-btn" onClick={zoomOut}>−</button>
         <button className="zoom-btn zoom-reset" onClick={zoomReset}>↺</button>
       </div>
-      <div className="map-hint">molette = zoom · cliquer-glisser = déplacer</div>
     </div>
   )
 }
