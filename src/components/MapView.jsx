@@ -92,12 +92,20 @@ function Segment({ p1, p2, transport }) {
   }
 
   if (transport === 'train') {
-    const { path } = quadBezierPath(p1, p2, 0.15)
+    const curvature = 0.15
+    const { path } = quadBezierPath(p1, p2, curvature)
+    const mid = quadMid(p1, p2, curvature)
     return (
       <g>
         <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={8} strokeOpacity={0.12} strokeLinecap="round" />
         <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={3} strokeLinecap="round" strokeDasharray="1 6" />
         <path d={path} fill="none" stroke={ROUTE_COLOR} strokeWidth={2} strokeLinecap="round" />
+        <text
+          x={mid[0]} y={mid[1]}
+          textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: '16px', userSelect: 'none' }}
+          stroke="#e8e0c5" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke"
+        >🚂</text>
       </g>
     )
   }
